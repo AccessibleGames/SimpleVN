@@ -1,0 +1,750 @@
+:root {
+  --font: "SimSun", "宋体", "Times New Roman", Times, serif;
+  --name-col: 3.4em;    /* left column: speaker name or note label; blank for narration */
+}
+
+#app {
+  height: 100%;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  height: 100dvh;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.6;
+  color: #000;
+  background: #fff;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------- layout ---------- */
+/* Three rows shared by both modes: the title bar, the stage area, the status
+   bar. Keeping them as grid rows is what stops the stage canvas from being
+   drawn at full window height with the status text floating over it. */
+.app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+}
+
+.app > .stage-head {
+  grid-row: 1;
+  grid-column: 1;
+  border-bottom: 1px solid #000;
+}
+
+.stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  grid-row: 2;
+  grid-column: 1;
+}
+
+.stage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px clamp(14px, 4vw, 28px);
+  flex: 0 0 auto;
+}
+
+.title { font-size: 16px; font-weight: bold; }
+
+.head-right { display: flex; align-items: baseline; gap: 16px; flex: 0 0 auto; }
+
+/* text-only buttons: no frame, no fill */
+.btn-text {
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  color: #000;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.btn-text:hover { text-decoration: underline; }
+.btn-text[hidden] { display: none; }
+
+/* ---------- conversation ---------- */
+.log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px clamp(14px, 4vw, 28px) 28px;
+  cursor: pointer;
+}
+.stage.is-choosing .log { cursor: default; }
+
+/* one line: left column (name / label / blank) + body */
+.row {
+  display: grid;
+  grid-template-columns: var(--name-col) minmax(0, 1fr);
+  column-gap: .4em;
+  margin: 0 0 .3em;   /* base line gap; JS widens the newest lines then fades back to this */
+}
+
+/* merged history: many lines in one grid container, no per-row wrapper.
+   line-height matches a live row's pitch (24px line + 4.5px gap = 1.9em). */
+.flat {
+  display: grid;
+  grid-template-columns: var(--name-col) minmax(0, 1fr);
+  column-gap: .4em;
+  margin: 0 0 .3em;
+  line-height: 1.9;
+}
+
+.row .who,
+.flat .who {
+  font-weight: bold;      /* speaker name: bold */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row .txt { min-width: 0; }
+
+/* merged line cells: the text cell wraps inside its own column, so the second
+   visual line stays aligned with the text column instead of the name column */
+.flat .txt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* needs a label: note in the left column, italic body */
+.row--tag .who { font-size: .85em; font-style: italic; }
+.row--tag .txt { font-style: italic; }
+
+/* section heading: larger + bold */
+.row--head {
+  display: block;
+  margin: 1.5em 0 .8em;
+  font-size: 1.15em;
+  font-weight: bold;
+}
+
+/* ---------- choices: > a / > b ---------- */
+.choices {
+  list-style: none;
+  margin: .5em 0 1em;
+  padding: 0 0 0 calc(var(--name-col) + .4em);
+}
+
+.choice {
+  display: block;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: #000;
+  background: none;
+  border: 0;
+  line-height: 1.7;
+}
+
+.choice .caret {
+  display: inline-block;
+  width: 1.3em;
+}
+
+/* pending: clickable */
+.choice--pending { cursor: pointer; }
+.choice--pending:hover { text-decoration: underline; }
+
+/* picked: bold + check */
+.choice--record { cursor: default; }
+.choice--record.is-picked { font-weight: bold; }
+.choice--record.is-picked .label::after { content: "  ✓"; }
+
+/* the road not taken: strikethrough */
+.choice--record:not(.is-picked) .label { text-decoration: line-through; }
+
+/* ---------- back to bottom ---------- */
+/* Removed the standing advance cue: it never changed while advancing, so it was
+   pure cost in the corner of the screen. The next-action feedback is the line
+   appearing on click. */
+
+/* back to bottom: bottom-right, clear of the text and the status bar */
+.to-bottom {
+  position: absolute;
+  right: clamp(10px, 2.5vw, 18px);
+  bottom: 42px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  color: #000;
+  background: #fff;
+  border: 1px solid #000;
+  cursor: pointer;
+  z-index: 6;
+}
+.to-bottom[hidden] { display: none; }
+
+/* ---------- status bar: collapsed by default, expands upward ---------- */
+.status {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  grid-row: 3;
+  grid-column: 1;
+  border-top: 1px solid #000;
+  /* The bar needs its own backing and some room under it, or it reads as text
+     floating on the artwork with the window edge cutting it off. */
+  background: #fff;
+  padding: 0 clamp(8px, 2vw, 14px) calc(6px + env(safe-area-inset-bottom));
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: .8em;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 clamp(14px, 4vw, 28px);
+  font: inherit;
+  font-size: 13px;
+  color: #000;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* language switch, tucked into the status bar */
+.lang {
+  flex: 0 0 auto;
+  padding: 0 clamp(14px, 4vw, 28px) 0 0;
+  font: inherit;
+  font-size: 12px;
+  color: #000;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.lang:hover { text-decoration: underline; }
+/* The auto-read toggle stays visibly on between clicks. */
+.lang.is-on { font-weight: bold; text-decoration: underline; }
+
+.status-label { font-weight: bold; flex: 0 0 auto; }
+
+.status-sum {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.status-arrow { flex: 0 0 auto; font-size: 11px; }
+
+.status-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  padding: 10px clamp(14px, 4vw, 28px) 12px;
+  background: #fff;
+  border-top: 1px solid #000;
+}
+.status-panel[hidden] { display: none; }
+
+.status-list {
+  display: grid;
+  grid-template-columns: 5.5em minmax(0, 1fr);
+  gap: .2em .6em;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.status-list dt { font-weight: bold; }
+.status-list dd { margin: 0; }
+
+/* ---------- wide screens: contents on the right ---------- */
+.toc-panel { display: none; }
+
+.toc-head {
+  margin: 0 0 .35em;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.toc-note {
+  margin: 0 0 .8em;
+  font-size: 12px;
+}
+
+.toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.toc-list li { margin: 0 0 .45em; }
+
+.toc-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: #000;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.toc-btn:hover { text-decoration: underline; }
+
+.toc-btn .n { margin-right: .4em; font-weight: bold; }
+
+/* local choice: indented slightly */
+.toc-btn--local { margin-left: 16px; }
+
+.toc-alt {
+  display: block;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* jump entries for skipped ranges and bookmarks */
+.toc-gap { margin-top: .7em; }
+.toc-btn--jump .n { font-weight: normal; }
+
+.toc-snippet {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.toc-item--pinned {
+  display: flex;
+  align-items: baseline;
+  gap: .4em;
+}
+.toc-item--pinned .toc-btn { flex: 1 1 auto; width: auto; min-width: 0; }
+
+.toc-del {
+  flex: 0 0 auto;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: #000;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.toc-del:hover { text-decoration: underline; }
+
+/* ---------- narrow screens: contents card ---------- */
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, .1);
+}
+.sheet[hidden] { display: none; }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  width: min(270px, 84%);
+  max-height: 100%;
+  background: #fff;
+  border-left: 1px solid #000;
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 14px 0;
+  flex: 0 0 auto;
+}
+.card-head .h { font-size: 13px; font-weight: bold; }
+
+.card-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 14px 24px;
+}
+
+/* ---------- save slots ---------- */
+.save-list {
+  list-style: none;
+  margin: .5em 0 0;
+  padding: 0;
+}
+
+.save-list li {
+  display: flex;
+  align-items: baseline;
+  gap: .6em;
+}
+
+.save-slot {
+  display: flex;
+  align-items: baseline;
+  gap: .8em;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: .35em 0;
+  font: inherit;
+  font-size: 14px;
+  color: #000;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.save-slot:hover { text-decoration: underline; }
+
+.save-num { flex: 0 0 auto; width: 1.2em; font-weight: bold; }
+.save-when { flex: 0 0 auto; font-size: 13px; }
+.save-cap {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: #8b8378;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.save-del { flex: 0 0 auto; font-size: 14px; }
+
+/* ---------- wide screens ---------- */
+@media (min-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr) 240px; }
+
+  .toc-panel {
+    display: block;
+    overflow-y: auto;
+    grid-row: 1 / -1;
+    grid-column: 2;
+    padding: 10px 20px 40px 24px;
+  }
+
+  .toc-toggle { display: none; }
+}
+
+@media (max-width: 899px) {
+  .toc-toggle { display: inline; }
+}
+
+/* ---------- start menu ---------- */
+.menu {
+  height: 100%;
+  overflow-y: auto;
+  padding: clamp(24px, 8vh, 72px) clamp(16px, 5vw, 48px);
+}
+
+.menu-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.menu-title {
+  margin: 0 0 .5em;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.menu-lang { display: flex; gap: 12px; }
+
+.menu-lang-btn,
+.menu-game,
+.menu-action,
+.menu-saves button {
+  font: inherit;
+  color: #000;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.menu-lang-btn { font-size: 12px; }
+.menu-lang-btn.is-active { font-weight: bold; }
+
+.menu-games {
+  margin: 0 0 1.6em;
+}
+
+/* One game per line. As a wrapping row the label and the first title shared a
+   line and the second title looked like a continuation of the label. */
+.menu-games-label {
+  display: block;
+  font-size: 12px;
+  color: #8b8378;
+  margin-bottom: .35em;
+}
+
+.menu-game-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .35em;
+}
+
+.menu-game { font-size: 15px; color: #8b8378; }
+.menu-game.is-active { color: #000; font-weight: bold; text-decoration: underline; }
+
+.menu-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .75em;
+}
+
+.menu-action { font-size: 15px; }
+.menu-action:disabled { color: #c0b8ab; cursor: default; }
+.menu-action:hover:not(:disabled) { text-decoration: underline; }
+
+.menu-note { margin-left: .8em; font-size: 12px; color: #8b8378; }
+
+.menu-saves {
+  list-style: none;
+  margin: 1.4em 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+.menu-saves li { margin: .35em 0; }
+.menu-saves button:hover { text-decoration: underline; }
+
+.menu-head { margin-bottom: 1.1em; }
+
+/* ---------- scene replay ---------- */
+.scenes {
+  height: 100%;
+  overflow-y: auto;
+  padding: clamp(16px, 4vh, 32px) clamp(16px, 5vw, 48px) 64px;
+}
+
+.scene-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: .6em;
+}
+
+.scene-title { margin: 0; font-size: 16px; font-weight: bold; }
+.scene-note { margin: .3em 0 1em; font-size: 13px; color: #8b8378; }
+
+.scene-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 46em;
+}
+
+.scene-item {
+  display: flex;
+  align-items: baseline;
+  gap: .8em;
+  width: 100%;
+  padding: .3em 0;
+  font: inherit;
+  font-size: 14px;
+  color: #000;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.scene-item:hover { text-decoration: underline; }
+
+.scene-num {
+  flex: 0 0 auto;
+  min-width: 2.2em;
+  font-size: 12px;
+  color: #8b8378;
+  text-align: right;
+}
+
+.scene-name { flex: 1 1 auto; min-width: 0; }
+
+/* ---------- gallery ---------- */
+.gallery {
+  height: 100%;
+  overflow-y: auto;
+  padding: clamp(16px, 4vh, 32px) clamp(16px, 5vw, 48px) 64px;
+}
+
+.gallery-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 1.4em;
+}
+
+.gallery-title { font-size: 15px; font-weight: bold; }
+.gallery-count { font-size: 12px; color: #8b8378; }
+
+.gallery-empty { font-size: 13px; color: #8b8378; }
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(120px, 22vw, 200px), 1fr));
+  gap: 14px 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.gallery-cell {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #000;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gallery-cell img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Placeholder tone while the WebP decodes; no border, keeps the page flat. */
+  background: #f4f1ec;
+}
+
+.gallery-cell-label {
+  display: block;
+  margin-top: .35em;
+  font-size: 11px;
+  color: #8b8378;
+}
+
+.gallery-cell:hover img { outline: 1px solid #000; }
+
+.gallery-viewer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: clamp(12px, 3vh, 28px);
+  background: #fff;
+}
+
+.gallery-full {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.gallery-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  font-size: 13px;
+}
+
+.gallery-position { font-size: 12px; color: #8b8378; }
+
+/* ---------- dev stage harness (?stage) ---------- */
+.stage-preview { position: fixed; inset: 0; background: #000; }
+.stage-canvas { display: block; width: 100%; height: 100%; }
+.stage-hud {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  margin: 0;
+  font-size: 11px;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- galgame mode: full-bleed stage, dialogue box on top of it ------ */
+/* The stage sits in the middle grid row, so the title bar and the status bar
+   frame it instead of the canvas running the height of the window. */
+.gstage {
+  position: relative;
+  grid-row: 2;
+  grid-column: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+  touch-action: manipulation;
+}
+
+.app--galgame > .stage {
+  grid-row: 2;
+  grid-column: 1;
+  min-height: 0;
+  justify-content: flex-end;
+  /* Empty space must stay transparent to the stage, so a tap on the artwork
+     reaches the canvas (advance / long-press recenter) instead of the log. */
+  pointer-events: none;
+}
+
+.app--galgame > .stage .log {
+  pointer-events: auto;
+}
+
+/* A two-line title would eat into the artwork, so it stays on one line. */
+.app--galgame .stage-head .title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.app--galgame .log {
+  margin-top: auto;
+  flex: 0 1 auto;
+  max-height: 46vh;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.94);
+  padding-top: 10px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
+}
+
+.gstage-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.gstage-fallback {
+  position: absolute;
+  inset: auto 0 8px 0;
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: #fff;
+}
