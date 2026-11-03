@@ -21,6 +21,10 @@ export interface GraphNode {
   /** Key of the choice prompt, see Pack.text. */
   prompt?: string | null;
   next?: string | null;
+  /** Ren'Py-style call: jump here, then resume at `next` when the callee returns. */
+  call?: string | null;
+  /** Pop the call stack instead of continuing. */
+  ret?: boolean;
   choices?: { text: string; next: string | null }[];
   /** Stage changes that fire when this page is reached. */
   stage?: StageEvent[];
@@ -70,6 +74,8 @@ export function materialize(graph: Graph, pack: Pack): Story {
     if (text !== "") raw.lines = [who ? { who, text } : text];
     if (node.caption) raw.caption = pack.captions[node.caption];
     if (node.next) raw.next = node.next;
+    if (node.call) raw.call = node.call;
+    if (node.ret) raw.ret = true;
     if (node.stage) raw.stage = node.stage;
 
     if (node.choices && node.choices.length > 0) {

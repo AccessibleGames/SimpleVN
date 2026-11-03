@@ -26,6 +26,8 @@ export interface GameSummary {
   sourceLocale: string;
   /** Locales that have a text pack on disk. */
   locales: string[];
+  /** Native pixel size of the stage art; two games of one engine can differ. */
+  design?: { w: number; h: number };
   gallery?: GalleryEntry[];
   /** Stage backgrounds, from content/bg.json. */
   bg?: GalleryEntry[];

@@ -10,7 +10,9 @@
     "build:game": "node tools/build-release.mjs",
     "preview": "vite preview",
     "preview:game": "node tools/build-release.mjs --preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:stage": "node --experimental-strip-types tools/check-stage-assets.mjs",
+    "index:art": "node tools/renpy-image-index.mjs"
   },
   "dependencies": {
     "intl-messageformat": "^12.1.4",

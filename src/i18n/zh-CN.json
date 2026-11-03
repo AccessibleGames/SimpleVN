@@ -53,5 +53,7 @@
   "gallery.back": "返回",
   "gallery.empty": "没有可鉴赏的图片。素材解包后运行 tools/build-art.mjs 生成。",
   "gallery.prev": "上一张",
-  "gallery.next": "下一张"
+  "gallery.next": "下一张",
+  "fold.lines": "{count} 行",
+  "fold.untitled": "无标题"
 }

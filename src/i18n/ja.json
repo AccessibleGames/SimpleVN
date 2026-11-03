@@ -53,5 +53,7 @@
   "gallery.back": "戻る",
   "gallery.empty": "鑑賞できる画像がありません。素材を展開して tools/build-art.mjs を実行してください。",
   "gallery.prev": "前へ",
-  "gallery.next": "次へ"
+  "gallery.next": "次へ",
+  "fold.lines": "{count} 行",
+  "fold.untitled": "無題"
 }

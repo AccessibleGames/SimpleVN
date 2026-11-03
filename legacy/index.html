@@ -1,0 +1,1283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>天台</title>
+<style>
+  :root {
+    --font: "SimSun", "宋体", "Times New Roman", Times, serif;
+    --name-col: 3.4em;    /* 左栏：人物名 / 说明标签，空着就是旁白的留白 */
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    margin: 0;
+    height: 100vh;
+    height: 100dvh;
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.6;
+    color: #000;
+    background: #fff;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ---------- 布局 ---------- */
+  .app {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    height: 100%;
+  }
+
+  .stage {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .stage-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px clamp(14px, 4vw, 28px);
+    flex: 0 0 auto;
+  }
+
+  .title { font-size: 16px; font-weight: bold; }
+
+  .head-right { display: flex; align-items: baseline; gap: 16px; flex: 0 0 auto; }
+
+  /* 纯文字按钮：无框、无底色，可点击的不靠形状区分 */
+  .btn-text {
+    padding: 0;
+    font: inherit;
+    font-size: 14px;
+    color: #000;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .btn-text:hover { text-decoration: underline; }
+  .btn-text[hidden] { display: none; }
+
+  /* ---------- 会话区 ---------- */
+  .log {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px clamp(14px, 4vw, 28px) 56px;
+    cursor: pointer;
+  }
+  .stage.is-choosing .log { cursor: default; }
+
+  /* 每一句：左栏（名/标签/留白） + 正文 */
+  .row {
+    display: grid;
+    grid-template-columns: var(--name-col) minmax(0, 1fr);
+    column-gap: .4em;
+    margin: 0 0 .3em;   /* 常规行距；越新的句子由 JS 额外拉开，远离后回落到这里 */
+  }
+
+  .row .who {
+    font-weight: bold;      /* 人物名：粗体 */
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .row .txt { min-width: 0; }
+
+  /* 需要区分的：左栏加说明，正文斜体 + 小一号 */
+  .row--tag .who { font-size: .85em; font-style: italic; }
+  .row--tag .txt { font-style: italic; }
+
+  /* 小标题：大一号 + 粗体 */
+  .row--head {
+    display: block;
+    margin: 1.5em 0 .8em;
+    font-size: 1.15em;
+    font-weight: bold;
+  }
+
+  /* ---------- 选项：> a / > b ---------- */
+  .choices {
+    list-style: none;
+    margin: .5em 0 1em;
+    padding: 0 0 0 calc(var(--name-col) + .4em);
+  }
+
+  .choice {
+    display: block;
+    width: 100%;
+    padding: 0;
+    font: inherit;
+    text-align: left;
+    color: #000;
+    background: none;
+    border: 0;
+    line-height: 1.7;
+  }
+
+  .choice .caret {
+    display: inline-block;
+    width: 1.3em;
+  }
+
+  /* 待选：可点 */
+  .choice--pending { cursor: pointer; }
+  .choice--pending:hover { text-decoration: underline; }
+
+  /* 已选：粗体 + 勾 */
+  .choice--record { cursor: default; }
+  .choice--record.is-picked { font-weight: bold; }
+  .choice--record.is-picked .label::after { content: "  ✓"; }
+
+  /* 没走的那条：删除线 */
+  .choice--record:not(.is-picked) .label { text-decoration: line-through; }
+
+  /* ---------- 底部提示 ---------- */
+  .cue {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 38px;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: .08em;
+    pointer-events: none;
+    user-select: none;
+  }
+  .cue[hidden] { display: none; }
+
+  /* 回到最下方：靠右下角，避开阅读区中央和底部状态栏 */
+  .to-bottom {
+    position: absolute;
+    right: clamp(10px, 2.5vw, 18px);
+    bottom: 42px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1;
+    color: #000;
+    background: #fff;
+    border: 1px solid #000;
+    cursor: pointer;
+    z-index: 6;
+  }
+  .to-bottom[hidden] { display: none; }
+
+  /* ---------- 状态栏（默认折叠，向上展开） ---------- */
+  .status {
+    position: relative;
+    flex: 0 0 auto;
+    border-top: 1px solid #000;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: .8em;
+    width: 100%;
+    height: 30px;
+    padding: 0 clamp(14px, 4vw, 28px);
+    font: inherit;
+    font-size: 13px;
+    color: #000;
+    text-align: left;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+
+  .status-label { font-weight: bold; flex: 0 0 auto; }
+
+  .status-sum {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .status-arrow { flex: 0 0 auto; font-size: 11px; }
+
+  .status-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    padding: 10px clamp(14px, 4vw, 28px) 12px;
+    background: #fff;
+    border-top: 1px solid #000;
+  }
+  .status-panel[hidden] { display: none; }
+
+  .status-list {
+    display: grid;
+    grid-template-columns: 5.5em minmax(0, 1fr);
+    gap: .2em .6em;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .status-list dt { font-weight: bold; }
+  .status-list dd { margin: 0; }
+
+  /* ---------- 宽屏：右侧目录 ---------- */
+  .toc-panel { display: none; }
+
+  .toc-head {
+    margin: 0 0 .35em;
+    font-size: 13px;
+    font-weight: bold;
+  }
+
+  .toc-note {
+    margin: 0 0 .8em;
+    font-size: 12px;
+  }
+
+  .toc-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .toc-list li { margin: 0 0 .45em; }
+
+  .toc-btn {
+    display: block;
+    width: 100%;
+    padding: 0;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    color: #000;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .toc-btn:hover { text-decoration: underline; }
+
+  .toc-btn .n { margin-right: .4em; font-weight: bold; }
+
+  /* 局部选择支：缩进一点 */
+  .toc-btn--local { margin-left: 16px; }
+
+  .toc-alt {
+    display: block;
+    font-size: 12px;
+    font-style: italic;
+  }
+
+  /* 跳读行段、书签的跳转项 */
+  .toc-gap { margin-top: .7em; }
+  .toc-btn--jump .n { font-weight: normal; }
+
+  .toc-snippet {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 12px;
+    font-style: italic;
+  }
+
+  .toc-item--pinned {
+    display: flex;
+    align-items: baseline;
+    gap: .4em;
+  }
+  .toc-item--pinned .toc-btn { flex: 1 1 auto; width: auto; min-width: 0; }
+
+  .toc-del {
+    flex: 0 0 auto;
+    padding: 0;
+    font: inherit;
+    font-size: 12px;
+    color: #000;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .toc-del:hover { text-decoration: underline; }
+
+  /* ---------- 窄屏：右上角弹出的目录卡片 ---------- */
+  .sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: flex-end;
+    background: rgba(0, 0, 0, .1);
+  }
+  .sheet[hidden] { display: none; }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    width: min(270px, 84%);
+    max-height: 100%;
+    background: #fff;
+    border-left: 1px solid #000;
+  }
+
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 10px 14px 0;
+    flex: 0 0 auto;
+  }
+  .card-head .h { font-size: 13px; font-weight: bold; }
+
+  .card-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 6px 14px 24px;
+  }
+
+  /* ---------- 宽屏 ---------- */
+  @media (min-width: 900px) {
+    .app { grid-template-columns: minmax(0, 1fr) 240px; }
+
+    .toc-panel {
+      display: block;
+      overflow-y: auto;
+      padding: 10px 20px 40px 24px;
+    }
+
+    .toc-toggle { display: none; }
+  }
+
+  @media (max-width: 899px) {
+    :root { --name-col: 3em; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <main class="stage" id="stage">
+    <div class="stage-head">
+      <span class="title">天台</span>
+      <span class="head-right">
+        <button class="btn-text" id="btn-skip" type="button">跳到选择支</button>
+        <button class="btn-text" id="btn-bookmark" type="button">书签</button>
+        <button class="btn-text toc-toggle" id="toc-toggle" type="button">目录</button>
+      </span>
+    </div>
+    <div class="log" id="log"></div>
+    <div class="cue" id="cue">↓</div>
+    <button class="to-bottom" id="to-bottom" type="button" aria-label="回到最下方" hidden>↓</button>
+
+    <footer class="status" id="status">
+      <div class="status-panel" id="status-panel" hidden>
+        <dl class="status-list" id="status-list"></dl>
+      </div>
+      <button class="status-bar" id="status-bar" type="button"
+              aria-expanded="false" aria-controls="status-panel">
+        <span class="status-label">状态</span>
+        <span class="status-sum" id="status-sum"></span>
+        <span class="status-arrow" id="status-arrow">▴</span>
+      </button>
+    </footer>
+  </main>
+
+  <aside class="toc-panel">
+    <p class="toc-head">目录</p>
+    <p class="toc-note">点击可跳转</p>
+    <ol class="toc-list" id="toc-desktop"></ol>
+  </aside>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="card" role="dialog" aria-label="目录">
+    <div class="card-head">
+      <span class="h">目录</span>
+      <button class="btn-text" id="sheet-close" type="button">关闭</button>
+    </div>
+    <div class="card-body">
+      <p class="toc-note">点击可跳转</p>
+      <ol class="toc-list" id="toc-mobile"></ol>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   1. 剧本
+   -------------------------------------------------------------------------
+   一行的写法：
+
+     "旁白或描写"                        → 左栏留白
+     { who: "她", text: "「台词」" }      → 左栏放人物名（粗体）
+     { tag: "心声", text: "……" }          → 左栏放说明（小号斜体），正文斜体
+     { head: "第一章　天台" }             → 小标题（大一号 + 粗体）
+
+   正文里可以用行内标记：**粗体**  *斜体*  __下划线__  ~~删除线~~
+
+   node = {
+     lines, next,
+     set:  (vars) => void,     // 可选：进入本节点时改变量
+     local: true,              // 可选：局部选择支（不影响结局，目录里缩进）
+     choices: [{ id, label, when, set, next }]
+   }
+   ========================================================================= */
+
+const START = "start";
+const INITIAL_VARS = { affection: 0 };
+
+const script = {
+  start: {
+    lines: [
+      { head: "第一章　天台" },
+      "放学后的天台。风很大，云被推着走。",
+      "我推开铁门的时候，看见一个不认识的女生靠在栏杆上。",
+      "她回过头，逆着光看了我一会儿。",
+      { who: "她", text: "「……你也翘课了？」" },
+      "她把手机塞回口袋，重新靠回栏杆上。"
+    ],
+    next: "first"
+  },
+
+  /* ---- 第 1 个选择支（影响结局） ---- */
+  first: {
+    lines: [
+      { tag: "心声", text: "她好像不打算走。" },
+      { who: "她", text: "「站着干什么，过来啊。」" }
+    ],
+    choices: [
+      {
+        id: "stay",
+        label: "留下来，靠着栏杆",
+        set: (vars) => { vars.affection += 2; },
+        next: "stay"
+      },
+      {
+        id: "leave",
+        label: "说声抱歉，转身下楼",
+        set: (vars) => { vars.affection -= 1; },
+        next: "leave"
+      }
+    ]
+  },
+
+  stay: {
+    lines: [
+      "我在她旁边站定。铁栏杆是凉的。",
+      "她往旁边挪了半步，给我让出一点位置。",
+      "栏杆上贴着一张__褪色的纸条__，字迹已经看不清了。",
+      { tag: "状态", text: "好感度 {affection}" }
+    ],
+    next: "second"
+  },
+
+  leave: {
+    lines: [
+      "我说了句抱歉，想要下楼。",
+      { who: "她", text: "「等一下。」" },
+      "我停在门口。她关掉了手机屏幕。",
+      { tag: "状态", text: "好感度 {affection}" }
+    ],
+    next: "second"
+  },
+
+  /* ---- 第 2 个选择支：要好感度够高才出现第一个选项 ---- */
+  second: {
+    lines: [
+      "风把她的头发吹到脸前，她伸手拨开。",
+      { tag: "心声", text: "她在等人，还是有话要说？" }
+    ],
+    choices: [
+      {
+        id: "ask",
+        label: "问她叫什么名字",
+        when: (vars) => vars.affection >= 2,
+        next: "ask"
+      },
+      {
+        id: "silent",
+        label: "什么也不问，等她自己开口",
+        next: "silent"
+      }
+    ]
+  },
+
+  ask: {
+    lines: [
+      { who: "我", text: "「你叫什么？」" },
+      { who: "她", text: "「我叫……」" },
+      "她顿了顿，忽然笑起来。",
+      { who: "她", text: "「算了，下次再问吧。」" },
+      { tag: "心声", text: "我大概**会**记住这个下午。" }
+    ],
+    next: "chitchat"
+  },
+
+  silent: {
+    lines: [
+      "她等了一会儿，什么也没等到，就把视线移回天空。",
+      { tag: "心声", text: "也许不问更好。" }
+    ],
+    next: "chitchat"
+  },
+
+  /* ---- 第 3 个选择支：局部选择，只换说法，不影响结局 ---- */
+  chitchat: {
+    local: true,
+    lines: ["风小了一点。远处有人在操场上喊。"],
+    choices: [
+      { id: "joke", label: "随口讲个笑话", next: "joke" },
+      { id: "quiet", label: "什么也不说，就那样站着", next: "quiet" }
+    ]
+  },
+
+  joke: {
+    lines: [
+      { who: "我", text: "「你知道为什么……算了，我讲不好笑。」" },
+      "她愣了两秒，然后笑出声来。",
+      { tag: "心声", text: "笑点大概在别处。" }
+    ],
+    next: "ending"
+  },
+
+  quiet: {
+    lines: [
+      "我什么也没说。",
+      "我们就那样站着，直到教学楼的灯一盏一盏亮起来。"
+    ],
+    next: "ending"
+  },
+
+  ending: {
+    lines: [
+      "铃声停了。天台上只剩下我们两个人的呼吸和风。",
+      { tag: "状态", text: "好感度 {affection}" },
+      { head: "—— 完 ——" }
+    ]
+  }
+};
+
+/* =========================================================================
+   2. 解释器（唯一的真相来源）
+   -------------------------------------------------------------------------
+   run(decisions, lineLimit) 从 START 重放一遍，返回
+   { entries, points, vars, lineCount, waiting }
+
+     entries : { kind:"line", style, label, text } | { kind:"choice", options, pickedId }
+     points  : 已做过的选择（目录用）
+     vars    : 走完这些决策后的变量
+     waiting : { type:"line" } | { type:"choice", depth, options } | { type:"end" }
+
+   每次都从 INITIAL_VARS 重新推演，不改外部状态。
+   所以「变量回退」不需要快照，把 decisions 截短再重跑就行。
+   ========================================================================= */
+
+function fillTemplate(text, vars) {
+  return String(text).replace(/\{(\w+)\}/g, function (whole, key) {
+    return Object.prototype.hasOwnProperty.call(vars, key)
+      ? String(vars[key])
+      : whole;
+  });
+}
+
+// 把剧本里的一行整理成 { style, label, text }
+function normalizeLine(raw, vars) {
+  if (typeof raw === "string") {
+    return { style: "narration", label: null, text: fillTemplate(raw, vars) };
+  }
+  if (raw.head) {
+    return { style: "head", label: null, text: fillTemplate(raw.head, vars) };
+  }
+  if (raw.tag) {
+    return { style: "tag", label: raw.tag, text: fillTemplate(raw.text, vars) };
+  }
+  return {
+    style: "say",
+    label: raw.who ? fillTemplate(raw.who, vars) : null,
+    text: fillTemplate(raw.text, vars)
+  };
+}
+
+function run(decisions, lineLimit) {
+  const vars = Object.assign({}, INITIAL_VARS);
+  const entries = [];
+  const points = [];
+
+  let nodeId = START;
+  let depth = 0;
+  let lineCount = 0;
+  let guard = 0;
+
+  const stop = (waiting) => ({ entries, points, vars, lineCount, waiting });
+
+  while (nodeId) {
+    if (++guard > 1000) throw new Error("剧本疑似死循环：" + nodeId);
+
+    const node = script[nodeId];
+    if (!node) throw new Error("剧本里没有这个节点：" + nodeId);
+
+    if (node.set) node.set(vars);
+
+    for (const raw of node.lines || []) {
+      if (lineCount >= lineLimit) return stop({ type: "line" });
+      entries.push(Object.assign({ kind: "line" }, normalizeLine(raw, vars)));
+      lineCount++;
+    }
+
+    if (node.choices) {
+      const options = node.choices.filter((c) => !c.when || c.when(vars));
+      const picked = options.find((c) => c.id === decisions[depth]);
+
+      entries.push({
+        kind: "choice",
+        options: options.map((c) => ({ id: c.id, label: c.label })),
+        pickedId: picked ? picked.id : null
+      });
+
+      if (!picked) return stop({ type: "choice", depth, options });
+
+      points.push({
+        depth: depth,
+        local: !!node.local,
+        picked: picked.label,
+        options: options.map((c) => c.label),
+        restoreLimit: lineCount
+      });
+
+      depth++;
+      if (picked.set) picked.set(vars);
+      nodeId = picked.next;
+      continue;
+    }
+
+    nodeId = node.next || null;
+  }
+
+  return stop({ type: "end" });
+}
+
+/* =========================================================================
+   3. UI 状态：两个数
+   ========================================================================= */
+
+const ui = { decisions: [], limit: 0, marks: [] };   // marks: 跳读产生的行段 {from,to}
+
+/* 书签：temp = 栈（“回到最下方”留下的回跳点，最多 3 层）
+          pinned = 手动加的，会话内一直保留 */
+const BOOKMARK_MAX = 3;
+const bookmarks = { temp: [], pinned: [] };
+let bookmarkSeq = 0;
+
+let view = null;
+
+const el = (id) => document.getElementById(id);
+
+/* ---------------------------- 动作 -------------------------------------- */
+
+function nextLine() {
+  if (view.waiting.type !== "line") return;
+  ui.limit = view.lineCount + 1;
+  render();
+}
+
+/* 直接输出到下一个选择支（跳读）
+   不滚动到底部，行段记进目录，行距按收窄后的常规值算 */
+function skipToChoice() {
+  if (view.waiting.type !== "line") return;
+
+  const from = view.lineCount;
+  const to = run(ui.decisions, Infinity).lineCount;
+  if (to <= from) return;
+
+  ui.limit = to;
+  ui.marks.push({ from: from, to: to });
+  render({ keepScroll: true });
+}
+
+function pick(id) {
+  if (view.waiting.type !== "choice") return;
+  const depth = view.waiting.depth;
+  ui.decisions = ui.decisions.slice(0, depth);
+  ui.decisions.push(id);
+  ui.limit = view.lineCount + 1;   // 选完立刻印出下一句
+  render();
+}
+
+function jumpTo(depth) {
+  const point = view.points.find((p) => p.depth === depth);
+  if (!point) return;
+  ui.decisions = ui.decisions.slice(0, depth);
+  ui.limit = point.restoreLimit;
+  ui.marks = ui.marks.filter((m) => m.to <= point.restoreLimit);
+  // 落到已经不存在的位置上的书签一并掉掉
+  bookmarks.temp = bookmarks.temp.filter((b) => b.line < point.restoreLimit);
+  bookmarks.pinned = bookmarks.pinned.filter((b) => b.line < point.restoreLimit);
+  closeSheet();
+  render();
+}
+
+/* ---------------------------- 行内标记 ---------------------------------- */
+
+const MARKUP = /\*\*([^*]+)\*\*|\*([^*]+)\*|__([^_]+)__|~~([^~]+)~~/g;
+
+// **粗体**  *斜体*  __下划线__  ~~删除线~~
+function appendRich(parent, text) {
+  MARKUP.lastIndex = 0;
+  let last = 0;
+  let m;
+
+  while ((m = MARKUP.exec(text)) !== null) {
+    if (m.index > last) {
+      parent.appendChild(document.createTextNode(text.slice(last, m.index)));
+    }
+    const tag = m[1] !== undefined ? "strong"
+              : m[2] !== undefined ? "em"
+              : m[3] !== undefined ? "u"
+              : "s";
+    const node = document.createElement(tag);
+    node.textContent = m[1] || m[2] || m[3] || m[4];
+    parent.appendChild(node);
+    last = MARKUP.lastIndex;
+  }
+
+  if (last < text.length) {
+    parent.appendChild(document.createTextNode(text.slice(last)));
+  }
+}
+
+/* ---------------------------- 渲染 -------------------------------------- */
+
+function render(options) {
+  const log = el("log");
+  const wasAtBottom = isAtBottom(log);
+  const rewound = view !== null && ui.limit < view.lineCount;
+  const keepScroll = !!(options && options.keepScroll);
+
+  view = run(ui.decisions, ui.limit);
+  const w = view.waiting;
+
+  /* 正文 + 选项 */
+  log.textContent = "";
+  let lineIndex = 0;
+  for (const entry of view.entries) {
+    if (entry.kind === "line") {
+      log.appendChild(renderRow(entry, lineIndex));
+      lineIndex++;
+    } else {
+      log.appendChild(renderChoiceBlock(entry));
+    }
+  }
+  applyAgeSpacing(log);
+
+  /* 底部提示 */
+  const cue = el("cue");
+  cue.hidden = w.type === "end";
+  cue.textContent = w.type === "choice" ? "请选择一个选项" : "↓";
+
+  /* 交互态 */
+  el("stage").classList.toggle("is-choosing", w.type !== "line");
+  el("btn-skip").hidden = w.type !== "line";
+
+  /* 目录 */
+  renderToc();
+  renderStatus();
+
+  /* 滚动：本来就在底部 / 回退时才跟着走，读者往上翻时不打扰 */
+  if (!keepScroll && (wasAtBottom || rewound)) log.scrollTop = log.scrollHeight;
+  updateToBottom();
+}
+
+/* -------------------------------------------------------------------------
+   行距按“距离屏幕底部有多远”给，而不是按句数：
+     · 内容还没撑满一屏 → 全部用最大行距（没必要收缩）
+     · 已经超出一屏    → 一屏之内的句子逐渐收窄，一屏以外完全常规
+   测量总是基于“清空行距后的常规排版”，所以不会因为加行距而反复抽搽；
+   窗口被拉伸时重算一次就能重新分配。
+   ------------------------------------------------------------------------- */
+const SPACE_MAX = 1.1;    // 最大额外行距（em）
+
+function applyAgeSpacing(log) {
+  const rows = Array.prototype.slice.call(log.querySelectorAll(".row"));
+  if (rows.length === 0) return;
+
+  // 先清空，量出“常规行距”下的真实尺寸
+  for (const row of rows) row.style.marginTop = "";
+
+  const cs = getComputedStyle(log);
+  const viewH = log.clientHeight;
+  const room = viewH - log.scrollHeight;          // > 0 表示还没撑满一屏
+  const maxPx = SPACE_MAX * (parseFloat(cs.fontSize) || 15);
+
+  // 只给“正常读到的句子”加行距：首行和跳读行段保持常规
+  const targets = rows.filter((row, i) => i > 0 && !isBulkLine(Number(row.dataset.line)));
+
+  if (room > 0) {
+    // 还没撑满：把空出来的高度平均分掉，不超过上限
+    const per = Math.min(room / Math.max(1, targets.length), maxPx);
+    for (const row of targets) row.style.marginTop = per.toFixed(2) + "px";
+    return;
+  }
+
+  // 超出一屏：离底部越远越紧，一屏以外回到常规行距
+  const last = rows[rows.length - 1];
+  const lastBottom = last.offsetTop + last.offsetHeight;
+
+  for (const row of targets) {
+    const bottom = row.offsetTop + row.offsetHeight;
+    const t = Math.min(Math.max((lastBottom - bottom) / viewH, 0), 1);
+    const extra = maxPx * (1 - t) * (1 - t);
+    row.style.marginTop = extra > 0.5 ? extra.toFixed(2) + "px" : "";
+  }
+}
+
+function isBulkLine(line) {
+  return ui.marks.some((m) => line >= m.from && line < m.to);
+}
+
+function renderRow(entry, lineIndex) {
+  if (entry.style === "head") {
+    const head = document.createElement("div");
+    head.className = "row--head";
+    head.dataset.line = String(lineIndex);
+    appendRich(head, entry.text);
+    return head;
+  }
+
+  const row = document.createElement("div");
+  row.className = "row row--" + entry.style;
+  row.dataset.line = String(lineIndex);
+
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = entry.label || "";     // 旁白：留白
+
+  const txt = document.createElement("span");
+  txt.className = "txt";
+  appendRich(txt, entry.text);
+
+  row.appendChild(who);
+  row.appendChild(txt);
+  return row;
+}
+
+function renderChoiceBlock(block) {
+  const pending = block.pickedId === null;
+
+  const list = document.createElement("ul");
+  list.className = "choices";
+
+  for (const opt of block.options) {
+    const li = document.createElement("li");
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "choice " + (pending ? "choice--pending" : "choice--record");
+
+    const caret = document.createElement("span");
+    caret.className = "caret";
+    caret.textContent = ">";
+
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = opt.label;
+
+    btn.appendChild(caret);
+    btn.appendChild(label);
+
+    if (pending) {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pick(opt.id);
+      });
+    } else {
+      btn.tabIndex = -1;
+      btn.setAttribute("aria-disabled", "true");
+      if (opt.id === block.pickedId) btn.classList.add("is-picked");
+      btn.addEventListener("click", (e) => e.stopPropagation());
+    }
+
+    li.appendChild(btn);
+    list.appendChild(li);
+  }
+
+  return list;
+}
+
+/* ---------------------------- 状态栏 ------------------------------------ */
+
+const VAR_LABELS = { affection: "好感度" };
+
+function varLabel(key) {
+  return VAR_LABELS[key] || key;
+}
+
+function renderStatus() {
+  const vars = Object.entries(view.vars);
+
+  // 折叠时的一行摘要
+  el("status-sum").textContent = vars.length
+    ? vars.map(([k, v]) => varLabel(k) + " " + v).join("　")
+    : "（无）";
+
+  // 展开后的明细
+  const list = el("status-list");
+  list.textContent = "";
+
+  const addRow = (name, value) => {
+    const dt = document.createElement("dt");
+    dt.textContent = name;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    list.appendChild(dt);
+    list.appendChild(dd);
+  };
+
+  for (const [k, v] of vars) addRow(varLabel(k), String(v));
+  addRow("句数", String(view.lineCount));
+  addRow("选择", view.points.length + " 次");
+}
+
+function toggleStatus(force) {
+  const panel = el("status-panel");
+  const open = typeof force === "boolean" ? force : panel.hidden;
+  panel.hidden = !open;
+  el("status-bar").setAttribute("aria-expanded", String(open));
+  el("status-arrow").textContent = open ? "▾" : "▴";
+}
+
+/* ---------------------------- 目录 -------------------------------------- */
+
+function renderToc() {
+  for (const list of [el("toc-desktop"), el("toc-mobile")]) {
+    list.textContent = "";
+    let rendered = 0;
+
+    // 每组之间留一点空（只在组的第一条上）
+    const push = (li, groupStart) => {
+      if (groupStart && rendered > 0) {
+        li.className = (li.className ? li.className + " " : "") + "toc-gap";
+      }
+      list.appendChild(li);
+      rendered++;
+    };
+
+    for (const point of view.points) {
+      const li = document.createElement("li");
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "toc-btn" + (point.local ? " toc-btn--local" : "");
+      btn.title = "回到这个选择支";
+
+      const n = document.createElement("span");
+      n.className = "n";
+      n.textContent = String(point.depth + 1);
+
+      const alt = document.createElement("span");
+      alt.className = "toc-alt";
+      alt.textContent = "另：" + point.options.filter((o) => o !== point.picked).join(" / ");
+
+      btn.appendChild(n);
+      btn.appendChild(document.createTextNode(point.picked));
+      btn.appendChild(alt);
+      btn.addEventListener("click", () => jumpTo(point.depth));
+
+      li.appendChild(btn);
+      push(li, false);
+    }
+
+    /* 跳读留下的行段 */
+    ui.marks.forEach((mark, i) => {
+      const li = document.createElement("li");
+
+      const from = mark.from + 1;
+      const label = from === mark.to
+        ? "第 " + from + " 句"
+        : "第 " + from + "–" + mark.to + " 句";
+
+      li.appendChild(tocButton("↓", label + "（跳读）", "", "滚动到这段的开头",
+        () => scrollToAnchor({ line: mark.from, delta: 4 })));
+      push(li, i === 0);
+    });
+
+    /* 临时书签：按“回到最下方”时留下的位置，点一下回跳（用过即出栈） */
+    bookmarks.temp.forEach((mark, i) => {
+      const li = document.createElement("li");
+      li.appendChild(tocButton("←", "第 " + (mark.line + 1) + " 句", mark.text,
+        "回到这个位置", () => useTempBookmark(mark.id)));
+      push(li, i === 0);
+    });
+
+    /* 持久书签：手动加的，会话内一直保留 */
+    bookmarks.pinned.forEach((mark, i) => {
+      const li = document.createElement("li");
+      li.className = "toc-item--pinned";
+
+      li.appendChild(tocButton("★", "第 " + (mark.line + 1) + " 句", mark.text,
+        "回到这个书签", () => jumpToAnchor(mark)));
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "toc-del";
+      del.textContent = "×";
+      del.title = "删除这个书签";
+      del.addEventListener("click", () => {
+        bookmarks.pinned = bookmarks.pinned.filter((b) => b.id !== mark.id);
+        renderToc();
+      });
+
+      li.appendChild(del);
+      push(li, i === 0);
+    });
+
+    if (rendered === 0) {
+      const li = document.createElement("li");
+      li.textContent = "（还没有做过选择）";
+      list.appendChild(li);
+    }
+  }
+}
+
+function tocButton(marker, label, snippet, title, onJump) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "toc-btn toc-btn--jump";
+  btn.title = title;
+
+  const n = document.createElement("span");
+  n.className = "n";
+  n.textContent = marker;
+
+  btn.appendChild(n);
+  btn.appendChild(document.createTextNode(label));
+
+  if (snippet) {
+    const s = document.createElement("span");
+    s.className = "toc-snippet";
+    s.textContent = snippet;
+    btn.appendChild(s);
+  }
+
+  btn.addEventListener("click", onJump);
+  return btn;
+}
+
+/* ---------------------------- 书签 -------------------------------------- */
+
+/* 当前视口顶部是哪一句（行号 + 像素偏移，用于精确回跳） */
+function currentAnchor() {
+  const logEl = el("log");
+  const logRect = logEl.getBoundingClientRect();
+  const items = logEl.querySelectorAll("[data-line]");
+  if (items.length === 0) return null;
+
+  let row = items[items.length - 1];
+  for (const item of items) {
+    if (item.getBoundingClientRect().bottom > logRect.top + 6) { row = item; break; }
+  }
+
+  return {
+    line: Number(row.dataset.line),
+    delta: Math.round(row.getBoundingClientRect().top - logRect.top),
+    text: row.textContent.trim()
+  };
+}
+
+/* 回到某个位置；位置已经不存在时返回 false */
+function scrollToAnchor(anchor) {
+  const logEl = el("log");
+  const row = logEl.querySelector('[data-line="' + anchor.line + '"]');
+  if (!row) return false;
+
+  const d = row.getBoundingClientRect().top - logEl.getBoundingClientRect().top;
+  logEl.scrollTop += d - (anchor.delta || 0);
+  closeSheet();
+  updateToBottom();
+  return true;
+}
+
+/* “回到最下方”把当前阅读位置压栈（最多 BOOKMARK_MAX 层） */
+function pushTempBookmark() {
+  const anchor = currentAnchor();
+  if (!anchor) return;
+  if (bookmarks.temp.some((b) => b.line === anchor.line)) return;
+
+  bookmarks.temp.push({ id: ++bookmarkSeq, line: anchor.line, delta: anchor.delta, text: anchor.text });
+  while (bookmarks.temp.length > BOOKMARK_MAX) bookmarks.temp.shift();
+}
+
+function useTempBookmark(id) {
+  const i = bookmarks.temp.findIndex((b) => b.id === id);
+  if (i < 0) return;
+
+  const mark = bookmarks.temp[i];
+  bookmarks.temp.splice(i, 1);          // 用过即出栈，不会越叠越深
+  scrollToAnchor(mark);
+  renderToc();
+}
+
+function jumpToAnchor(mark) {
+  scrollToAnchor(mark);
+  renderToc();
+}
+
+/* 手动书签：会话内持久 */
+function addPinnedBookmark() {
+  const anchor = currentAnchor();
+  if (!anchor) return;
+
+  bookmarks.pinned.push({ id: ++bookmarkSeq, line: anchor.line, delta: anchor.delta, text: anchor.text });
+  renderToc();
+
+  if (window.innerWidth < 900) openSheet();   // 窄屏把目录打开，给个反馈
+}
+
+/* ---------------------------- 交互 -------------------------------------- */
+
+function isAtBottom(box) {
+  return box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+}
+
+const stage = el("stage");
+const log = el("log");
+
+/* 回到最下方：看不到底部时才出现，点一下回到最底 */
+function updateToBottom() {
+  const gap = log.scrollHeight - log.scrollTop - log.clientHeight;
+  el("to-bottom").hidden = gap < 60;
+}
+
+log.addEventListener("scroll", updateToBottom, { passive: true });
+
+el("to-bottom").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const gap = log.scrollHeight - log.scrollTop - log.clientHeight;
+  if (gap >= 60) pushTempBookmark();   // 已经在底部就不用留回跳点
+  log.scrollTop = log.scrollHeight;
+  updateToBottom();
+  renderToc();
+});
+
+let selectedText = false;      // 刚拖选过文字
+let ignoreNextClick = false;   // 滑动 / 长按结束后，丢掉随之而来的那次 click
+
+stage.addEventListener("mouseup", () => {
+  const sel = window.getSelection();
+  selectedText = !!(sel && !sel.isCollapsed && String(sel).length > 0);
+});
+
+/* 点会话区 = 下一句；滚轮 / 滑动只滚动，不推进 */
+stage.addEventListener("click", (e) => {
+  if (ignoreNextClick) { ignoreNextClick = false; return; }
+  if (selectedText) { selectedText = false; return; }
+  if (e.target.closest("button")) return;
+  if (e.target.closest(".status")) return;   // 状态栏 / 展开面板不推进
+  nextLine();
+});
+
+let touchOrigin = null;
+
+log.addEventListener("touchstart", (e) => {
+  const t = e.touches[0];
+  touchOrigin = { x: t.clientX, y: t.clientY, time: Date.now() };
+}, { passive: true });
+
+log.addEventListener("touchend", (e) => {
+  if (!touchOrigin) return;
+  const t = e.changedTouches[0];
+  const moved = Math.abs(t.clientX - touchOrigin.x) > 12 ||
+                Math.abs(t.clientY - touchOrigin.y) > 12;
+  const longPress = Date.now() - touchOrigin.time > 800;
+  touchOrigin = null;
+  if (moved || longPress) {
+    ignoreNextClick = true;
+    setTimeout(() => { ignoreNextClick = false; }, 350);
+  }
+}, { passive: true });
+
+/* 键盘（桌面顺手）：空格 / Enter / → 下一句，↓ 跳到选择支 */
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { closeSheet(); toggleStatus(false); return; }
+  const active = document.activeElement;
+  if (active && active.tagName === "BUTTON") return;
+  if (e.key === "ArrowDown") { e.preventDefault(); skipToChoice(); return; }
+  if (e.key !== " " && e.key !== "Enter" && e.key !== "ArrowRight") return;
+  e.preventDefault();
+  nextLine();
+});
+
+/* 目录卡片（窄屏） */
+function openSheet() {
+  el("sheet").hidden = false;
+  stage.classList.add("is-choosing");
+}
+
+function closeSheet() {
+  el("sheet").hidden = true;
+  if (view && view.waiting.type === "line") stage.classList.remove("is-choosing");
+}
+
+el("btn-skip").addEventListener("click", (e) => {
+  e.stopPropagation();
+  skipToChoice();
+});
+
+el("btn-bookmark").addEventListener("click", (e) => {
+  e.stopPropagation();
+  addPinnedBookmark();
+});
+
+el("status-bar").addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleStatus();
+});
+
+el("toc-toggle").addEventListener("click", (e) => {
+  e.stopPropagation();
+  openSheet();
+});
+
+el("sheet-close").addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeSheet();
+});
+
+el("sheet").addEventListener("click", (e) => {
+  if (e.target === el("sheet")) closeSheet();
+});
+
+let spacingFrame = 0;
+
+window.addEventListener("resize", () => {
+  if (window.innerWidth >= 900) closeSheet();
+  if (spacingFrame) return;
+  spacingFrame = requestAnimationFrame(() => {
+    spacingFrame = 0;
+    applyAgeSpacing(log);     // 窗口拉伸后重新分配行距
+    updateToBottom();
+  });
+});
+
+/* 启动 */
+render();
+</script>
+</body>
+</html>

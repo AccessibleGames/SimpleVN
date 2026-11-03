@@ -36,6 +36,10 @@ export interface NodeRaw {
   effects?: Effect[];
   /** Stage changes that happen when this page starts. */
   stage?: StageEvent[];
+  /** Ren'Py-style call: run this node, then resume at `next`. */
+  call?: string;
+  /** Pop the call stack; ends the story when the stack is empty. */
+  ret?: boolean;
   /** Section title, shown as a heading whenever it changes along the path. */
   caption?: string;
   /** Local choice: flavour only, it does not affect the ending (indented in the contents list). */

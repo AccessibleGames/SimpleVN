@@ -192,6 +192,15 @@ async function main() {
       } else if (page.flow.type === "jump") {
         node.next = liveNode(resolveTarget(fileKey, page.flow.target, page.flow.storage));
         jumpCount++;
+      } else if (page.flow.type === "call") {
+        // Ren'Py `call`: go to the callee, come back to this page's next.
+        node.call = liveNode(resolveTarget(fileKey, page.flow.target, page.flow.storage));
+        node.next = page.next ? liveNode(idOf.get(page.next) ?? null) : null;
+        jumpCount++;
+      } else if (page.flow.type === "return") {
+        // Pop the call stack; depth is tracked by the interpreter during replay.
+        node.ret = true;
+        node.next = null;
       } else if (page.flow.type === "end") {
         node.next = null;
       } else {

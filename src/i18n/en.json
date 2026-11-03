@@ -53,5 +53,7 @@
   "gallery.back": "Back",
   "gallery.empty": "No images yet. Unpack the assets and run tools/build-art.mjs.",
   "gallery.prev": "Previous",
-  "gallery.next": "Next"
+  "gallery.next": "Next",
+  "fold.lines": "{count, plural, one {# line} other {# lines}}",
+  "fold.untitled": "Untitled"
 }

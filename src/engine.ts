@@ -139,18 +139,25 @@ export function run(story: Story, decisions: string[], lineLimit = Infinity, fro
   let depth = 0; // decisions consumed so far
   let lineCount = 0;
   let currentCaption: string | null = null;
-  const visited = new Set<string>();
+  /** Return addresses for Ren'Py-style calls; replay rebuilds it every time. */
+  const returns: string[] = [];
+  // A hub that calls the same map over and over is legitimate, so loops are
+  // bounded by work done rather than by revisiting a page.
+  let steps = 0;
 
   const stop = (waiting: Waiting): View => ({ entries, points, vars, lineCount, waiting, stage });
 
   while (nodeId) {
-    // A page graph may loop (replay scenes, return-to-menu jumps); stop instead
-    // of walking forever. Real branches are expressed with choices.
-    if (visited.has(nodeId) || visited.size > 200000) return stop({ type: "end" });
-    visited.add(nodeId);
+    if (++steps > 400000) return stop({ type: "end" });
 
     const node: NodeRaw | undefined = story.nodes[nodeId];
-    if (!node) throw new Error(`unknown node in script: ${nodeId}`);
+    if (!node) {
+      // A jump can name a label the importer never saw, because Ren'Py allows one to
+      // be computed at runtime (`jump expression`, `renpy.random.choice`). Ending the
+      // page is the honest outcome; throwing would take the reader down with it.
+      if (import.meta.env?.DEV) console.warn(`unknown node in script: ${nodeId}`);
+      return stop({ type: "end" });
+    }
 
     applyEffects(vars, node.effects);
     applyStage(stage, node.stage);
@@ -196,6 +203,18 @@ export function run(story: Story, decisions: string[], lineLimit = Infinity, fro
       depth++;
       applyEffects(vars, picked.effects);
       nodeId = picked.next;
+      continue;
+    }
+
+    if (node.ret) {
+      nodeId = returns.pop();
+      continue;
+    }
+
+    if (node.call) {
+      // return to what follows this page once the callee returns
+      if (node.next) returns.push(node.next);
+      nodeId = node.call;
       continue;
     }
 

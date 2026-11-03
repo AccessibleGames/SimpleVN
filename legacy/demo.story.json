@@ -1,0 +1,137 @@
+{
+  "title": "天台",
+  "start": "start",
+  "vars": {
+    "affection": 0
+  },
+  "varLabels": {
+    "affection": "好感度"
+  },
+  "nodes": {
+    "start": {
+      "lines": [
+        { "head": "第一章　天台" },
+        "放学后的天台。风很大，云被推着走。",
+        "我推开铁门的时候，看见一个不认识的女生靠在栏杆上。",
+        "她回过头，逆着光看了我一会儿。",
+        { "who": "她", "text": "「……你也翘课了？」" },
+        "她把手机塞回口袋，重新靠回栏杆上。"
+      ],
+      "next": "first"
+    },
+
+    "first": {
+      "lines": [
+        { "tag": "心声", "text": "她好像不打算走。" },
+        { "who": "她", "text": "「站着干什么，过来啊。」" }
+      ],
+      "choices": [
+        {
+          "id": "stay",
+          "label": "留下来，靠着栏杆",
+          "effects": [{ "var": "affection", "op": "+=", "value": 2 }],
+          "next": "stay"
+        },
+        {
+          "id": "leave",
+          "label": "说声抱歉，转身下楼",
+          "effects": [{ "var": "affection", "op": "-=", "value": 1 }],
+          "next": "leave"
+        }
+      ]
+    },
+
+    "stay": {
+      "lines": [
+        "我在她旁边站定。铁栏杆是凉的。",
+        "她往旁边挪了半步，给我让出一点位置。",
+        "栏杆上贴着一张__褪色的纸条__，字迹已经看不清了。",
+        { "tag": "状态", "text": "好感度 {affection}" }
+      ],
+      "next": "second"
+    },
+
+    "leave": {
+      "lines": [
+        "我说了句抱歉，想要下楼。",
+        { "who": "她", "text": "「等一下。」" },
+        "我停在门口。她关掉了手机屏幕。",
+        { "tag": "状态", "text": "好感度 {affection}" }
+      ],
+      "next": "second"
+    },
+
+    "second": {
+      "lines": [
+        "风把她的头发吹到脸前，她伸手拨开。",
+        { "tag": "心声", "text": "她在等人，还是有话要说？" }
+      ],
+      "choices": [
+        {
+          "id": "ask",
+          "label": "问她叫什么名字",
+          "when": [{ "var": "affection", "op": ">=", "value": 2 }],
+          "next": "ask"
+        },
+        {
+          "id": "silent",
+          "label": "什么也不问，等她自己开口",
+          "next": "silent"
+        }
+      ]
+    },
+
+    "ask": {
+      "lines": [
+        { "who": "我", "text": "「你叫什么？」" },
+        { "who": "她", "text": "「我叫……」" },
+        "她顿了顿，忽然笑起来。",
+        { "who": "她", "text": "「算了，下次再问吧。」" },
+        { "tag": "心声", "text": "我大概**会**记住这个下午。" }
+      ],
+      "next": "chitchat"
+    },
+
+    "silent": {
+      "lines": [
+        "她等了一会儿，什么也没等到，就把视线移回天空。",
+        { "tag": "心声", "text": "也许不问更好。" }
+      ],
+      "next": "chitchat"
+    },
+
+    "chitchat": {
+      "local": true,
+      "lines": ["风小了一点。远处有人在操场上喊。"],
+      "choices": [
+        { "id": "joke", "label": "随口讲个笑话", "next": "joke" },
+        { "id": "quiet", "label": "什么也不说，就那样站着", "next": "quiet" }
+      ]
+    },
+
+    "joke": {
+      "lines": [
+        { "who": "我", "text": "「你知道为什么……算了，我讲不好笑。」" },
+        "她愣了两秒，然后笑出声来。",
+        { "tag": "心声", "text": "笑点大概在别处。" }
+      ],
+      "next": "ending"
+    },
+
+    "quiet": {
+      "lines": [
+        "我什么也没说。",
+        "我们就那样站着，直到教学楼的灯一盏一盏亮起来。"
+      ],
+      "next": "ending"
+    },
+
+    "ending": {
+      "lines": [
+        "铃声停了。天台上只剩下我们两个人的呼吸和风。",
+        { "tag": "状态", "text": "好感度 {affection}" },
+        { "head": "—— 完 ——" }
+      ]
+    }
+  }
+}

@@ -541,6 +541,38 @@ body {
 
 .menu-head { margin-bottom: 1.1em; }
 
+/* ---------- folded history ---------- */
+/* A finished chapter is one row until the reader opens it; the rows inside are
+   not in the document at all, which is what keeps a long session small. */
+.chapter { display: block; }
+
+.fold {
+  display: flex;
+  align-items: baseline;
+  gap: .5em;
+  width: 100%;
+  padding: .3em 0;
+  font: inherit;
+  font-size: 14px;
+  color: #000;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.fold:hover .fold-text { text-decoration: underline; }
+.fold.is-open { font-weight: bold; }
+
+.fold-mark { flex: 0 0 auto; }
+.fold-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.fold-count { flex: 0 0 auto; font-size: 12px; color: #8b8378; }
+
 /* ---------- scene replay ---------- */
 .scenes {
   height: 100%;

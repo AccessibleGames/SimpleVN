@@ -2,7 +2,7 @@
 /**
  * Generate a single-game module for release builds.
  *
- *   node tools/build-game-module.mjs --game yukikaze1 [--out src/games.gen.ts]
+ *   node tools/build-game-module.mjs --game <id> [--out src/games.gen.ts]
  *
  * Reads games/<id>/game.json + content/, writes a module that exposes the menu
  * summary eagerly and the graph plus text packs as dynamic imports, so the app
@@ -28,6 +28,8 @@ if (!gameId) {
 
 const dir = join("games", gameId);
 const meta = JSON.parse((await readFile(join(dir, "game.json"), "utf8")).replace(/^\uFEFF/, ""));
+/** Only games whose art is not the default 1024x768 declare a size. */
+const designField = meta.design ? `  design: ${JSON.stringify(meta.design)},` : "";
 const locales = (await readdir(join(dir, "content"), { withFileTypes: true }))
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
@@ -66,7 +68,7 @@ const summary: GameSummary = {
   id: ${JSON.stringify(meta.id)},
   title: ${JSON.stringify(meta.title)},
   sourceLocale: ${JSON.stringify(meta.sourceLocale)},
-  locales: ${JSON.stringify(locales)},
+${designField ? `${designField}\n` : ""}  locales: ${JSON.stringify(locales)},
 ${manifestFields.length ? `${manifestFields.join("\n")}\n` : ""}};
 
 export const games: GameSummary[] = [summary];

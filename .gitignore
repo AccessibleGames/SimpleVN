@@ -1,10 +1,18 @@
-node_modules/
+﻿node_modules/
 dist/
 *.log
 .DS_Store
 
+# generated release module
 src/games.gen.ts
+
+# extracted page intermediates
 *.pages.json
-# Game content is never part of this repository.
-games/*/content/
-games/*/public/
+
+# Agent run logs and translation workspace: local state, and they carry absolute
+# paths, the user name and game text. Nothing under .pi/ belongs in a repository.
+.pi/
+
+# Games are data, not code: adding one means dropping a folder, and the framework
+# is published without them. The whole tree stays local.
+games/

@@ -17,7 +17,7 @@ import type { GalleryEntry, GameContent, GameSummary, Graph, Pack } from "./game
  * module for one game instead (see `src/games.gen.ts`).
  */
 
-type Meta = { id: string; title: string; sourceLocale: string };
+type Meta = { id: string; title: string; sourceLocale: string; design?: { w: number; h: number } };
 type Manifest = { entries: GalleryEntry[] };
 
 const metas = import.meta.glob<Meta>("../games/*/game.json", { eager: true, import: "default" });
@@ -28,7 +28,7 @@ const manifests = import.meta.glob<Manifest>(
 const graphs = import.meta.glob<Graph>("../games/*/content/graph.json");
 const packs = import.meta.glob<Pack>("../games/*/content/*/pack.json");
 
-/** "../games/yukikaze1/content/ja/pack.json" -> { game, parts: ["ja","pack.json"] } */
+/** "../games/<id>/content/ja/pack.json" -> { game, parts: ["ja","pack.json"] } */
 function splitKey(key: string): { game: string; parts: string[] } | null {
   const match = /^\.\.\/games\/([^/]+)\/content\/(.+)$/.exec(key);
   return match ? { game: match[1], parts: match[2].split("/") } : null;
@@ -51,6 +51,7 @@ function slot(id: string, meta?: Meta) {
   if (meta) {
     found.title = meta.title;
     found.sourceLocale = meta.sourceLocale;
+    if (meta.design) found.design = meta.design;
   }
   return found;
 }
@@ -78,6 +79,8 @@ for (const key of Object.keys(graphs)) {
 for (const key of Object.keys(packs)) {
   const split = splitKey(key);
   if (!split || split.parts.length !== 2) continue;
+  // "_pages" and friends are import scaffolding, not languages
+  if (split.parts[0].startsWith("_")) continue;
   const entry = slot(split.game);
   entry.packKeys[split.parts[0]] = key;
   if (!entry.locales.includes(split.parts[0])) entry.locales.push(split.parts[0]);
@@ -110,6 +113,7 @@ export async function loadGame(id: string): Promise<GameContent | null> {
     id: entry.id,
     title: entry.title,
     sourceLocale: entry.sourceLocale,
+    design: entry.design,
     locales: entry.locales,
     graph: graph as Graph,
     packs: merged,

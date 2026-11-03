@@ -121,6 +121,31 @@ interface SingleBlock {
 
 type Block = FlatBlock | SingleBlock;
 
+/** A run of entries that starts at a heading; the unit the log collapses by. */
+interface Chapter {
+  title: string;
+  entries: Entry[];
+}
+
+/**
+ * Split the history into chapters at heading lines.
+ *
+ * Everything before the first heading is its own chapter so nothing is lost.
+ */
+function chapterize(entries: Entry[]): Chapter[] {
+  const chapters: Chapter[] = [];
+
+  for (const entry of entries) {
+    const heading = entry.kind === "line" && entry.style === "head" ? entry.text : null;
+    if (chapters.length === 0 || heading !== null) {
+      chapters.push({ title: heading ?? "", entries: [] });
+    }
+    chapters[chapters.length - 1].entries.push(entry);
+  }
+
+  return chapters;
+}
+
 function buildBlocks(entries: Entry[], live: number): Block[] {
   const split = Math.max(0, entries.length - live);
   const blocks: Block[] = [];
@@ -570,6 +595,10 @@ export function App({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saves, setSaves] = useState<{ slot: string; state: SaveState }[]>([]);
+  /** Chapters the reader opened by hand; all others stay unmounted. */
+  const [openChapters, setOpenChapters] = useState<Set<number>>(() => new Set());
+  /** A jump that had to mount a folded chapter first. */
+  const pendingScroll = useRef<Bookmark | null>(null);
   /** Auto-read: advance on a timer sized to the line being read. */
   const [auto, setAuto] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -661,6 +690,20 @@ export function App({
     showStage ? STAGE_LINES : LIVE_ENTRIES,
   );
 
+  /** Chapter boundaries over the whole history; folded ones are not mounted. */
+  const chapters = useMemo(() => chapterize(view.entries), [view.entries]);
+
+  /** Name to file for the stage, when a manifest knows better than the name. */
+  const stagePaths = useMemo(() => {
+    const index = (list?: { id: string; full: string }[]) => {
+      if (!list?.length) return undefined;
+      const map: Record<string, string> = {};
+      for (const entry of list) map[entry.id] = entry.full;
+      return map;
+    };
+    return { bg: index(game.bg), sprites: index(game.sprites) };
+  }, [game.bg, game.sprites]);
+
   /* ---------- actions ---------- */
 
   function nextLine() {
@@ -746,21 +789,48 @@ export function App({
   }
 
   function useTempBookmark(id: number) {
-    const log = logRef.current;
     const mark = stateRef.current.temp.find((b) => b.id === id);
-    if (!log || !mark) return;
+    if (!mark) return;
 
     stickRef.current = false;
     commit((s) => ({ ...s, temp: s.temp.filter((b) => b.id !== id) })); // popped once used
-    scrollToAnchor(log, mark);
+    revealAndScroll(mark);
     setSheetOpen(false);
   }
 
   function scrollToMark(from: number) {
     const log = logRef.current;
     if (!log) return;
-    if (scrollToAnchor(log, { id: -1, line: from, delta: 4, text: "" })) stickRef.current = false;
+    revealAndScroll({ id: -1, line: from, delta: 4, text: "" });
     setSheetOpen(false);
+  }
+
+  /**
+   * Jumping into a folded chapter means mounting it first. The scroll happens in
+   * a layout effect, once the rows that the anchor points at exist.
+   */
+  function revealAndScroll(anchor: Bookmark) {
+    const index = chapterIndexOfLine(anchor.line);
+    const current = index === chapters.length - 1;
+
+    if (current || openChapters.has(index)) {
+      const log = logRef.current;
+      if (log && scrollToAnchor(log, anchor)) stickRef.current = false;
+      return;
+    }
+
+    setOpenChapters((prev) => new Set(prev).add(index));
+    pendingScroll.current = anchor;
+    stickRef.current = false;
+  }
+
+  function chapterIndexOfLine(line: number): number {
+    for (let index = chapters.length - 1; index >= 0; index--) {
+      const first = chapters[index].entries[0];
+      const start = first && first.kind === "line" ? first.lineIndex : 0;
+      if (line >= start) return index;
+    }
+    return 0;
   }
 
   /** Swap between the plain log and the stage. */
@@ -809,9 +879,7 @@ export function App({
   }
 
   function jumpToPinned(mark: Bookmark) {
-    const log = logRef.current;
-    if (!log) return;
-    if (scrollToAnchor(log, mark)) stickRef.current = false;
+    revealAndScroll(mark);
     setSheetOpen(false);
   }
 
@@ -862,6 +930,13 @@ export function App({
       if (frame) cancelAnimationFrame(frame);
     };
   }, []);
+
+  useLayoutEffect(() => {
+    const anchor = pendingScroll.current;
+    const log = logRef.current;
+    if (!anchor || !log) return;
+    if (scrollToAnchor(log, anchor)) pendingScroll.current = null;
+  });
 
   useEffect(() => {
     const onResize = () => {
@@ -1008,6 +1083,86 @@ export function App({
 
   /* ---------- output ---------- */
 
+  /** One rendered block; shared by the current chapter and any opened one. */
+  function renderBlock(block: Block) {
+    if (block.kind === "flat") {
+      return (
+        <div key={block.key} class="flat" data-line={block.firstLine} data-count={block.lines.length}>
+          {block.lines.flatMap((line, i) => [
+            <span key={`w${i}`} class="who">
+              {line.name}
+            </span>,
+            <span key={`t${i}`} class="txt">
+              {line.text}
+            </span>,
+          ])}
+        </div>
+      );
+    }
+    return block.entry.kind === "line" ? (
+      <Row key={block.key} line={block.entry} />
+    ) : (
+      <Choices key={block.key} block={block.entry} onPick={pick} />
+    );
+  }
+
+  /**
+   * The log in novel mode: the current chapter is live, older chapters collapse
+   * into one row each and are not mounted until opened. A long session otherwise
+   * keeps thousands of rows in the document for no benefit.
+   */
+  function renderChapters() {
+    return chapters.map((chapter, index) => {
+      const current = index === chapters.length - 1;
+      const expanded = current || openChapters.has(index);
+      const title = chapter.title || t("fold.untitled");
+      const count = t("fold.lines", { count: chapter.entries.length });
+
+      if (!expanded) {
+        return (
+          <button
+            key={`fold${index}`}
+            class="fold"
+            type="button"
+            onClick={stop(() => setOpenChapters((prev) => new Set(prev).add(index)))}
+          >
+            <span class="fold-mark">▸</span>
+            <span class="fold-text">{title}</span>
+            <span class="fold-count">{count}</span>
+          </button>
+        );
+      }
+
+      // An opened older chapter shows its heading as the fold row; the chapter
+      // being read has no fold row, so its heading is printed like any other.
+      const body = current || !chapter.title ? chapter.entries : chapter.entries.slice(1);
+      const live = current ? LIVE_ENTRIES : Math.min(LIVE_ENTRIES, body.length);
+
+      return (
+        <section key={`chapter${index}`} class="chapter">
+          {!current && (
+            <button
+              class="fold is-open"
+              type="button"
+              onClick={stop(() =>
+                setOpenChapters((prev) => {
+                  const next = new Set(prev);
+                  next.delete(index);
+                  return next;
+                }),
+              )}
+            >
+              <span class="fold-mark">▾</span>
+              <span class="fold-text">{title}</span>
+              <span class="fold-count">{count}</span>
+            </button>
+          )}
+          {buildBlocks(body, live).map(renderBlock)}
+        </section>
+      );
+    });
+  }
+
   const tocProps = {
     view,
     state,
@@ -1023,6 +1178,8 @@ export function App({
       {showStage && (
         <StageView
           assets={assets}
+          design={game.design}
+          paths={stagePaths}
           stage={view.stage}
           slots={story.slots}
           offset={tilt.offset}
@@ -1075,29 +1232,7 @@ export function App({
         onMouseUp={onStageMouseUp}
       >
         <div class="log" ref={logRef} onTouchStart={onLogTouchStart} onTouchEnd={onLogTouchEnd}>
-          {blocks.map((block) =>
-            block.kind === "flat" ? (
-              <div
-                key={block.key}
-                class="flat"
-                data-line={block.firstLine}
-                data-count={block.lines.length}
-              >
-                {block.lines.flatMap((line, i) => [
-                  <span key={`w${i}`} class="who">
-                    {line.name}
-                  </span>,
-                  <span key={`t${i}`} class="txt">
-                    {line.text}
-                  </span>,
-                ])}
-              </div>
-            ) : block.entry.kind === "line" ? (
-              <Row key={block.key} line={block.entry} />
-            ) : (
-              <Choices key={block.key} block={block.entry} onPick={pick} />
-            ),
-          )}
+          {showStage ? blocks.map(renderBlock) : renderChapters()}
         </div>
 
         {showToBottom && (

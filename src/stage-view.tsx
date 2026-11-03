@@ -3,13 +3,20 @@ import { createStage } from "./stage";
 import type { Camera, StageLayer } from "./stage";
 import type { StageState } from "./types";
 
-/** Native resolution of the source art; the stage maps this to the viewport. */
-const DESIGN_WIDTH = 1024;
-const DESIGN_HEIGHT = 768;
+/** Native resolution of the source art when a game does not declare one. */
+const DEFAULT_DESIGN = { w: 1024, h: 768 };
 
 interface StageViewProps {
   /** Base path for art/, bg/ and sprites/. */
   assets: string;
+  /** Native pixel size of the art; the stage maps this to the viewport. */
+  design?: { w: number; h: number };
+  /**
+   * Name to file, when the file is not simply `<name>.webp`. Ren'Py art keeps
+   * whatever folder structure the unpacked archive had, so a picture may live at
+   * `02/fc 38.webp` while the script calls it `fc38`.
+   */
+  paths?: { bg?: Record<string, string>; sprites?: Record<string, string> };
   stage: StageState;
   /** Slot positions declared by the script. */
   slots?: { l: number; c: number; r: number };
@@ -30,6 +37,8 @@ interface StageViewProps {
  */
 export function StageView({
   assets,
+  design: designProp,
+  paths,
   stage,
   slots,
   offset,
@@ -38,6 +47,10 @@ export function StageView({
   onRecenter,
   onPanRoom,
 }: StageViewProps) {
+  const design = designProp ?? DEFAULT_DESIGN;
+  /** A picture's file, which is its name unless the manifest says otherwise. */
+  const fileOf = (layer: "bg" | "sprites", name: string) =>
+    paths?.[layer]?.[name] ?? `${name}.webp`;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const handleRef = useRef<ReturnType<typeof createStage> | null>(null);
   const holdRef = useRef(0);
@@ -79,14 +92,14 @@ export function StageView({
     const slotOffsets = [slots?.l ?? -250, slots?.c ?? 0, slots?.r ?? 250, slots?.l ?? -250];
 
     if (fade) {
-      list.push({ url: `${assets}bg/${fade.from}.webp`, x: 0, y: 0, width: DESIGN_WIDTH });
+      list.push({ url: `${assets}bg/${fileOf("bg", fade.from)}`, x: 0, y: 0, width: design.w });
     }
     if (bgName) {
       list.push({
-        url: `${assets}bg/${bgName}.webp`,
+        url: `${assets}bg/${fileOf("bg", bgName)}`,
         x: 0,
         y: 0,
-        width: DESIGN_WIDTH,
+        width: design.w,
         alpha: fade ? fade.progress : 1,
       });
     }
@@ -96,22 +109,22 @@ export function StageView({
       // Each tachie image is a full-canvas layer with the character drawn at the
       // centre position, so a slot is just a horizontal shift of that canvas.
       list.push({
-        url: `${assets}sprites/${name}.webp`,
+        url: `${assets}sprites/${fileOf("sprites", name)}`,
         x: slotOffsets[slot] ?? 0,
         y: 0,
-        width: DESIGN_WIDTH,
+        width: design.w,
       });
     });
 
     return list;
-  }, [assets, bgName, fade?.from, fade?.progress, stage.sprites.join(","), slots?.l, slots?.c, slots?.r]);
+  }, [assets, design.w, paths, bgName, fade?.from, fade?.progress, stage.sprites.join(","), slots?.l, slots?.c, slots?.r]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     try {
-      handleRef.current = createStage(canvas, { designWidth: DESIGN_WIDTH, designHeight: DESIGN_HEIGHT });
+      handleRef.current = createStage(canvas, { designWidth: design.w, designHeight: design.h });
       setFailed(null);
     } catch (error) {
       setFailed(String(error));
@@ -152,8 +165,8 @@ export function StageView({
     if (!handle) return;
     const room = roomRef.current;
     const camera: Camera = {
-      x: DESIGN_WIDTH / 2 + (enabled ? clamp(offset.x, room.x) : 0),
-      y: DESIGN_HEIGHT / 2 + (enabled ? clamp(offset.y, room.y) : 0),
+      x: design.w / 2 + (enabled ? clamp(offset.x, room.x) : 0),
+      y: design.h / 2 + (enabled ? clamp(offset.y, room.y) : 0),
       zoom: 1,
     };
     handle.setCamera(camera);
